@@ -1,0 +1,197 @@
+-- Derek hub v2 | Murder Mystery 2
+local P=game:GetService("Players")
+local RS=game:GetService("RunService")
+local UIS=game:GetService("UserInputService")
+local VIM=game:GetService("VirtualInputManager")
+local CG=game:GetService("CoreGui")
+local LP=P.LocalPlayer
+local CAM=workspace.CurrentCamera
+local C={esp=false,espHL=true,auto=false,mode="Pantalla completa",fov=120,range=600,part="Head",autoGun=true,speed=16,jump=50,noclip=false,ij=false}
+local COLS={ASESINO=Color3.fromRGB(255,50,50),SHERIFF=Color3.fromRGB(60,150,255),INOCENTE=Color3.fromRGB(90,255,130)}
+
+local function role(p)
+	if p==LP then return "YO" end
+	local b,c=p:FindFirstChild("Backpack"),p.Character
+	local function h(n) return (b and b:FindFirstChild(n)) or (c and c:FindFirstChild(n)) end
+	if h("Knife") then return "ASESINO" end
+	if h("Gun") then return "SHERIFF" end
+	local r=string.lower(tostring(p:GetAttribute("Role") or p:GetAttribute("role") or ""))
+	if r:find("murder") or r:find("asesin") then return "ASESINO" end
+	if r:find("sheriff") then return "SHERIFF" end
+	return "INOCENTE"
+end
+
+local tags={}
+local function espOn(p)
+	if p==LP then return end
+	local ch=p.Character or p.CharacterAdded:Wait()
+	local head=ch:WaitForChild("Head",5) or ch:WaitForChild("HumanoidRootPart")
+	local bb=Instance.new("BillboardGui")
+	bb.Name="DerekESP" bb.Size=UDim2.fromOffset(170,40) bb.StudsOffset=Vector3.new(0,2.6,0) bb.MaxDistance=1500 bb.AlwaysOnTop=true
+	bb.Adornee=head bb.Parent=head
+	local t=Instance.new("TextLabel",bb)
+	t.Size=UDim2.fromScale(1,1) t.BackgroundTransparency=1 t.Font=Enum.Font.GothamBlack t.TextSize=16 t.TextStrokeTransparency=0
+	local hl=Instance.new("Highlight",ch)
+	hl.Name="DerekHL" hl.FillTransparency=.65 hl.OutlineColor=Color3.new(1,1,1) hl.Adornee=ch
+	tags[p]={bb=bb,hl=hl,t=t}
+end
+for _,p in ipairs(P:GetPlayers()) do task.spawn(espOn,p) end
+P.PlayerAdded:Connect(function(p) task.spawn(espOn,p) end)
+
+RS.RenderStepped:Connect(function()
+	for p,v in pairs(tags) do
+		if not p.Parent or not p.Character then v.bb:Destroy() v.hl:Destroy() tags[p]=nil
+		else local r=role(p)
+			v.t.Text=r v.t.TextColor3=COLS[r] or Color3.new(1,1,1) v.hl.FillColor=COLS[r] or Color3.new(1,1,1)
+			v.bb.Enabled=C.esp v.hl.Enabled=C.esp and C.espHL end
+	end
+end)
+
+local function gun()
+	local ch=LP.Character local b=LP:FindFirstChild("Backpack")
+	return (ch and ch:FindFirstChild("Gun")) or (b and b:FindFirstChild("Gun"))
+end
+local function murderer()
+	local best,dist
+	for _,p in ipairs(P:GetPlayers()) do
+		local hr=p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+		if p~=LP and hr and role(p)=="ASESINO" then
+			local d=(hr.Position-CAM.CFrame.Position).Magnitude
+			if d<=C.range and (not dist or d<dist) then best,dist=p,d end
+		end
+	end
+	return best
+end
+local lastShot=0
+
+RS.Heartbeat:Connect(function()
+	if not C.auto then return end
+	local m=murderer() if not m then return end
+	local ch=m.Character
+	local part=ch:FindFirstChild(C.part) or ch:FindFirstChild("UpperTorso") or ch:FindFirstChild("HumanoidRootPart")
+	if not part then return end
+	local sp,on=CAM:WorldToViewportPoint(part.Position)
+	if C.mode=="Pantalla completa" and not (on and sp.Z>0) then return end
+	if C.mode=="Fov" then
+		local dir=(part.Position-CAM.CFrame.Position).Unit
+		if math.deg(math.acos(math.clamp(dir:Dot(CAM.CFrame.LookVector),-1,1)))>C.fov/2 then return end
+	end
+	local g=gun() if not g then return end
+	if g.Parent~=LP.Character then
+		if C.autoGun then pcall(function() LP.Character.Humanoid:EquipTool(g) end) end
+		return
+	end
+	CAM.CFrame=CFrame.lookAt(CAM.CFrame.Position,part.Position)
+	if os.clock()-lastShot<.12 then return end
+	lastShot=os.clock()
+	local v=CAM.ViewportSize
+	VIM:SendMouseButtonEvent(v.X/2,v.Y/2,0,true,game,1)
+	VIM:SendMouseButtonEvent(v.X/2,v.Y/2,0,false,game,1)
+end)
+
+RS.Stepped:Connect(function()
+	if C.noclip and LP.Character then
+		for _,v in ipairs(LP.Character:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide=false end end
+	end
+end)
+UIS.JumpRequest:Connect(function() if C.ij and LP.Character then LP.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping") end end)
+LP.CharacterAdded:Connect(function(ch) local h=ch:WaitForChild("Humanoid") h.WalkSpeed=C.speed h.JumpPower=C.jump end)
+
+local function mk(c,pr,par)
+	local o=Instance.new(c)
+	for k,v in pairs(pr) do o[k]=v end
+	o.Parent=par
+	return o
+end
+local sg=mk("ScreenGui",{Name="DerekHubV2",ResetOnSpawn=false,IgnoreGuiInset=true})
+if not pcall(function() sg.Parent=CG end) then sg.Parent=LP:WaitForChild("PlayerGui") end
+local main=mk("Frame",{Size=UDim2.fromOffset(560,310),Position=UDim2.new(.5,-280,.5,-155),BackgroundColor3=Color3.fromRGB(16,16,16),BorderSizePixel=0},sg)
+mk("UICorner",{CornerRadius=UDim.new(0,14)},main)
+mk("UIStroke",{Color=Color3.fromRGB(255,45,45),Thickness=2},main)
+local top=mk("Frame",{Size=UDim2.new(1,0,0,44),BackgroundTransparency=1},main)
+mk("UICorner",{CornerRadius=UDim.new(0,8)},mk("TextLabel",{Size=UDim2.fromOffset(34,34),Position=UDim2.fromOffset(12,5),BackgroundColor3=Color3.fromRGB(255,45,45),Text="D",Font=Enum.Font.GothamBlack,TextSize=20,TextColor3=Color3.new(1,1,1)},top))
+mk("TextLabel",{Size=UDim2.new(1,-120,0,18),Position=UDim2.new(0,58,0,6),BackgroundTransparency=1,Text="Derek hub v2",Font=Enum.Font.GothamBold,TextSize=15,TextColor3=Color3.new(1,1,1),TextXAlignment=Enum.TextXAlignment.Left},top)
+mk("TextLabel",{Size=UDim2.new(1,-120,0,12),Position=UDim2.new(0,58,0,24),BackgroundTransparency=1,Text="MM2 - ESP / AutoShoot",Font=Enum.Font.Gotham,TextSize=10,TextColor3=Color3.fromRGB(150,150,150),TextXAlignment=Enum.TextXAlignment.Left},top)
+local cl=mk("TextButton",{Size=UDim2.fromOffset(28,28),Position=UDim2.new(1,-38,0,8),BackgroundTransparency=1,Text="X",Font=Enum.Font.GothamBold,TextSize=15,TextColor3=Color3.fromRGB(220,220,220)},top)
+cl.MouseButton1Click:Connect(function() sg:Destroy() end)
+local drag,ds,ps
+top.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drag=true ds=main.Position ps=i.Position end end)
+UIS.InputChanged:Connect(function(i) if drag and i.UserInputType==Enum.UserInputType.MouseMovement then local d=i.Position-ps main.Position=UDim2.new(ds.X.Scale,ds.X.Offset+d.X,ds.Y.Scale,ds.Y.Offset+d.Y) end end)
+UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then drag=false end end)
+local side=mk("Frame",{Size=UDim2.new(0,96,1,-56),Position=UDim2.new(0,10,0,50),BackgroundTransparency=1},main)
+local pages,pc={},0
+local function page(n)
+	local b=mk("TextButton",{Size=UDim2.fromOffset(96,44),Position=UDim2.fromOffset(0,pc*50),BackgroundColor3=Color3.fromRGB(34,34,34),Text=n,Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Color3.fromRGB(210,210,210),BorderSizePixel=0},side)
+	mk("UICorner",{CornerRadius=UDim.new(0,8)},b) pc=pc+1
+	local f=mk("Frame",{Size=UDim2.new(1,-116,1,-58),Position=UDim2.new(0,106,0,50),BackgroundTransparency=1},main)
+	pages[n]={b=b,f=f}
+	b.MouseButton1Click:Connect(function()
+		for _,v in pairs(pages) do v.f.Visible=false v.b.BackgroundColor3=Color3.fromRGB(34,34,34) v.b.TextColor3=Color3.fromRGB(210,210,210) end
+		f.Visible=true b.BackgroundColor3=Color3.fromRGB(255,45,45) b.TextColor3=Color3.new(1,1,1)
+	end)
+	return f
+end
+local function slider(par,y,lbl,mn,mx,df,cb)
+	mk("TextLabel",{Size=UDim2.new(1,-40,0,16),Position=UDim2.fromOffset(0,y),BackgroundTransparency=1,Text=lbl,Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Color3.fromRGB(230,230,230),TextXAlignment=Enum.TextXAlignment.Left},par)
+	local val=mk("TextLabel",{Size=UDim2.fromOffset(40,16),Position=UDim2.new(1,-40,0,y),BackgroundTransparency=1,Text=tostring(df),Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Color3.fromRGB(255,70,70),TextXAlignment=Enum.TextXAlignment.Right},par)
+	local bar=mk("Frame",{Size=UDim2.new(1,-40,0,6),Position=UDim2.fromOffset(0,y+24),BackgroundColor3=Color3.fromRGB(50,50,50),BorderSizePixel=0},par)
+	mk("UICorner",{CornerRadius=UDim.new(1,0)},bar)
+	local fill=mk("Frame",{Size=UDim2.fromScale(0,1),BackgroundColor3=Color3.fromRGB(255,45,45),BorderSizePixel=0},bar)
+	mk("UICorner",{CornerRadius=UDim.new(1,0)},fill)
+	local knob=mk("Frame",{Size=UDim2.fromOffset(12,12),AnchorPoint=Vector2.new(.5,.5),BackgroundColor3=Color3.new(1,1,1)},bar)
+	mk("UICorner",{CornerRadius=UDim.new(1,0)},knob)
+	local on=false
+	local function set(x)
+		x=math.clamp(x,mn,mx) local a=(x-mn)/(mx-mn)
+		fill.Size=UDim2.fromScale(a,1) knob.Position=UDim2.new(a,0,.5,0) val.Text=math.floor(x*10)/10 cb(x)
+	end
+	bar.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then on=true set((i.Position.X-bar.AbsolutePosition.X)/bar.AbsoluteSize.X*(mx-mn)+mn) end end)
+	UIS.InputChanged:Connect(function(i) if on and i.UserInputType==Enum.UserInputType.MouseMovement then set((i.Position.X-bar.AbsolutePosition.X)/bar.AbsoluteSize.X*(mx-mn)+mn) end end)
+	UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then on=false end end)
+	set(df) return y+42
+end
+local function toggle(par,y,lbl,cb)
+	local b=mk("TextButton",{Size=UDim2.new(1,-40,0,32),Position=UDim2.fromOffset(0,y),BackgroundColor3=Color3.fromRGB(34,34,34),Text="  "..lbl.."   [OFF]",Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Color3.fromRGB(200,200,200),BorderSizePixel=0,TextXAlignment=Enum.TextXAlignment.Left},par)
+	mk("UICorner",{CornerRadius=UDim.new(0,6)},b)
+	local on=false
+	b.MouseButton1Click:Connect(function()
+		on=not on b.Text="  "..lbl.."   ["..(on and "ON" or "OFF").."]"
+		b.BackgroundColor3=on and Color3.fromRGB(120,20,20) or Color3.fromRGB(34,34,34) cb(on)
+	end)
+	return y+40
+end
+local function button(par,y,lbl,cb)
+	local b=mk("TextButton",{Size=UDim2.new(1,-40,0,32),Position=UDim2.fromOffset(0,y),BackgroundColor3=Color3.fromRGB(34,34,34),Text=lbl,Font=Enum.Font.GothamBold,TextSize=12,TextColor3=Color3.fromRGB(255,80,80),BorderSizePixel=0},par)
+	mk("UICorner",{CornerRadius=UDim.new(0,6)},b)
+	b.MouseButton1Click:Connect(cb)
+	return y+40
+end
+
+local pj=page("Jugador")
+local y=8
+y=slider(pj,y,"WalkSpeed",8,200,16,function(v) C.speed=v if LP.Character then LP.Character:FindFirstChildOfClass("Humanoid").WalkSpeed=v end end)
+y=slider(pj,y,"JumpPower",50,300,50,function(v) C.jump=v if LP.Character then LP.Character:FindFirstChildOfClass("Humanoid").JumpPower=v end end)
+y=button(pj,y,"Teleport al asesino",function() local m=murderer() local hr=m and m.Character and m.Character:FindFirstChild("HumanoidRootPart") if hr and LP.Character then LP.Character.HumanoidRootPart.CFrame=hr.CFrame*CFrame.new(0,0,4) end end)
+
+local pv=page("Visual")
+y=8
+y=toggle(pv,y,"ESP de roles (todos)",function(v) C.esp=v end)
+y=toggle(pv,y,"Highlight",function(v) C.espHL=v end)
+
+local pa=page("Auto")
+y=8
+y=toggle(pa,y,"Auto Shoot",function(v) C.auto=v end)
+local modes={"Pantalla completa","Fov","369"} local mi=1 local mb
+mb=button(pa,y,"Modo: "..C.mode,function() mi=mi%3+1 C.mode=modes[mi] mb.Text="Modo: "..C.mode end)
+y=y+40
+y=slider(pa,y,"Fov (solo modo Fov)",10,360,120,function(v) C.fov=v end)
+y=slider(pa,y,"Rango",50,2000,600,function(v) C.range=v end)
+y=toggle(pa,y,"Aim: Torso",function(v) C.part=v and "Torso" or "Head" end)
+y=toggle(pa,y,"Auto equip pistola",function(v) C.autoGun=v end)
+
+local pn=page("Nocillo")
+y=8
+y=toggle(pn,y,"Noclip",function(v) C.noclip=v end)
+y=toggle(pn,y,"Infinite Jump",function(v) C.ij=v end)
+
+for _,v in pairs(pages) do v.f.Visible=false end pj.Visible=true
